@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>PE Tilt Game Final</title>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+<style>
+body { font-family: Arial; text-align: center; background:#f4f4f4; }
+video { width: 300px; border-radius: 10px; transform: scaleX(-1); }
+img { width: 200px; border-radius: 10px; margin: 10px; }
+.question { font-size: 20px; margin: 10px; }
+.options { display: flex; justify-content: space-around; }
+.option { width: 40%; padding: 10px; background: #fff; border-radius: 10px; }
+.left { border: 2px solid blue; }
+.right { border: 2px solid green; }
+#timer { font-size: 24px; margin: 10px; }
+#result { font-size: 22px; margin-top: 15px; }
+.arrow { font-size: 60px; opacity: 0.3; }
+.active { opacity: 1; color: red; }
+</style>
+</head>
+<body>
+
+<h1>PE Tilt Game</h1>
+<video id="webcam" autoplay playsinline></video>
+
+<div>
+<span id="leftArrow" class="arrow">⬅️</span>
+<span id="rightArrow" class="arrow">➡️</span>
+</div>
+
+<img id="activityImage" src="" />
+
+<div id="timer">Time: 10</div>
+<div class="question" id="question"></div>
+
+<div class="options">
+<div class="option left" id="leftOption"></div>
+<div class="option right" id="rightOption"></div>
+</div>
+
+<div id="result"></div>
+<button id="startBtn" onclick="startGame()">Start Game</button>
+
+<!-- Sound effects -->
+<audio id="correctSound" src="https://cdn.pixabay.com/download/audio/2022/03/15/audio_115b9b0f52.mp3?filename=correct-2-46134.mp3"></audio>
+<audio id="wrongSound" src="https://cdn.pixabay.com/download/audio/2022/03/15/audio_c8c8a73467.mp3?filename=wrong-47985.mp3"></audio>
+
+<script>
+const questions = [
+{img:"https://images.unsplash.com/photo-1599058917765-a780eda07a3e", q:"(Kicking a ball)", left:"If the weather is sunny, she will kick the ball outside.", right:"If the weather is rainy, she will read a book.", answer:"left"},
+{img:"https://images.unsplash.com/photo-1517649763962-0c623066013b", q:"(Playing basketball)", left:"If the weather is stormy, he will sleep.", right:"If the weather is sunny, he will play basketball outside.", answer:"right"},
+{img:"https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b", q:"(Catching a ball)", left:"If the weather is windy, they will watch TV.", right:"If the weather is sunny, they will catch the ball outside.", answer:"right"},
+{img:"https://images.unsplash.com/photo-1552674605-db6ffd4facb5", q:"(Running)", left:"If the weather is sunny, he will run in the field.", right:"If the weather is rainy, he will run outside.", answer:"left"},
+{img:"https://images.unsplash.com/photo-1526401281623-359c3f596c0c", q:"(Jump rope)", left:"If the weather is stormy, she will jump rope outside.", right:"If the weather is sunny, she will jump rope outside.", answer:"right"},
+{img:"https://images.unsplash.com/photo-1508609349937-5ec4ae374ebf", q:"(Throwing ball)", left:"If the weather is rainy, he will swim outside.", right:"If the weather is sunny, he will throw the ball outside.", answer:"right"},
+{img:"https://images.unsplash.com/photo-1505842465776-3bfd188d1eaf", q:"(Playing football)", left:"If the weather is sunny, they will play football outside.", right:"If the weather is stormy, they will play football outside.", answer:"left"},
+{img:"https://images.unsplash.com/photo-1594737625785-cd2d8b5c6f28", q:"(Skipping)", left:"If the weather is rainy, she will skip outside.", right:"If the weather is sunny, she will skip outside.", answer:"right"},
+{img:"https://images.unsplash.com/photo-1517649763962-0c623066013b", q:"(Playing volleyball)", left:"If the weather is sunny, they will play volleyball outside.", right:"If the weather is windy, they will sleep.", answer:"left"},
+{img:"https://images.unsplash.com/photo-1517836357463-d25dfeac3438", q:"(Exercise)", left:"If the weather is sunny, he will exercise outside.", right:"If the weather is rainy, he will exercise outside.", answer:"left"}
+];
+
+let current = 0;
+let time = 10;
+let timerInterval;
+let tiltDirection = "center";
+
+function shuffle(array) {
+for (let i = array.length - 1; i > 0; i--) {
+const j = Math.floor(Math.random() * (i + 1));
+[array[i], array[j]] = [array[j], array[i]];
+}
+}
+
+async function setupWebcam() {
+const video = document.getElementById('webcam');
+const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+video.srcObject = stream;
+
+const faceMesh = new FaceMesh({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`});
+faceMesh.setOptions({ maxNumFaces: 1, refineLandmarks: true });
+
+faceMesh.onResults(results => {
+if (results.multiFaceLandmarks.length > 0) {
+const landmarks = results.multiFaceLandmarks[0];
+const leftEye = landmarks[33];
+const rightEye = landmarks[263];
+
+const dx = rightEye.x - leftEye.x;
+const dy = rightEye.y - leftEye.y;
+const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+
+if (angle > 10) tiltDirection = "left";
+else if (angle < -10) tiltDirection = "right";
+else tiltDirection = "center";
+
+updateArrows();
+}
+});
+
+const camera = new Camera(video, {
+onFrame: async () => { await faceMesh.send({ image: video }); },
+width: 300,
+height: 300
+});
+camera.start();
+}
+
+function updateArrows() {
+document.getElementById("leftArrow").classList.remove("active");
+document.getElementById("rightArrow").classList.remove("active");
+
+if (tiltDirection === "left") document.getElementById("leftArrow").classList.add("active");
+if (tiltDirection === "right") document.getElementById("rightArrow").classList.add("active");
+}
+
+function startGame() {
+shuffle(questions);
+current = 0;
+document.getElementById("startBtn").style.display = "none";
+nextQuestion();
+}
+
+function nextQuestion() {
+if (current >= questions.length) {
+document.getElementById('question').innerText = "Game Finished!";
+document.getElementById("startBtn").style.display = "block";
+return;
+}
+
+let q = questions[current];
+
+document.getElementById("activityImage").src = q.img;
+
+let isSwapped = Math.random() > 0.5;
+let leftText = isSwapped ? q.right : q.left;
+let rightText = isSwapped ? q.left : q.right;
+
+let correctAnswer = q.answer;
+if (isSwapped) correctAnswer = q.answer === "left" ? "right" : "left";
+
+q.currentAnswer = correctAnswer;
+
+document.getElementById('question').innerText = q.q;
+document.getElementById('leftOption').innerText = "⬅️ " + leftText;
+document.getElementById('rightOption').innerText = rightText + " ➡️";
+
+time = 10;
+document.getElementById('timer').innerText = "Time: " + time;
+
+clearInterval(timerInterval);
+timerInterval = setInterval(() => {
+time--;
+document.getElementById('timer').innerText = "Time: " + time;
+if (time <= 0) {
+clearInterval(timerInterval);
+checkAnswer(tiltDirection);
+}
+}, 1000);
+}
+
+function checkAnswer(choice) {
+const correct = questions[current].currentAnswer;
+const result = document.getElementById('result');
+
+if (choice === correct) {
+result.innerText = "✅ Correct!";
+document.getElementById("correctSound").play();
+} else {
+result.innerText = "❌ Wrong!";
+document.getElementById("wrongSound").play();
+}
+
+current++;
+setTimeout(() => {
+result.innerText = "";
+nextQuestion();
+}, 1500);
+}
+
+setupWebcam();
+</script>
+
+</body>
+</html>
